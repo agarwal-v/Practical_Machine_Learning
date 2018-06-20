@@ -1,0 +1,82 @@
+---
+title: "Activity Prediction"
+author: "Vishal Agarwal"
+date: "6/18/2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(caret)
+library(randomForest)
+```
+
+## Background
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways
+
+## Data download
+Download the data and firstly, clean any columns with blanks and NAs.
+```{r download, cache=TRUE}
+if (!file.exists("pml-training.csv")) { 
+  download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv", "pml-training.csv", method = "curl")
+}
+if (!file.exists("pml-testing.csv")) { 
+  download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv", "pml-testing.csv", method = "curl")
+}
+data <- read.csv("pml-training.csv")
+
+# Use columns which do not have NULL data or blank data
+usefulData <- data[,colSums(is.na(data)) < 100]
+usefulData <- usefulData[,colSums(usefulData == "") < 100]
+#Verify that there is no NA or empty data
+sum(is.na(usefulData)) + sum(usefulData == "")
+```
+The first 7 columns of the remaining data are user info, serial number, timestamp and other information which does not seem related to the activity. Therefore we remove them and end with a subset of useful data.
+```{r clean, cache=TRUE}
+usefulData <- usefulData[,-(1:7)]
+inTrain <- createDataPartition(y=usefulData$classe,
+                              p=0.75, list=FALSE)
+training <- usefulData[inTrain,]
+testing <- usefulData[-inTrain,]
+
+cov<- cor(training[, -53])
+diag(cov) <- 0
+which(cov > 0.9, arr.ind = T)
+```
+Remove the correlated columns by computing the coariance matrix.
+```{r remove_correlated, cache=TRUE}
+training <- training[, -c(4, 9, 46)]
+testing <- testing[, -c(4, 9, 46)]
+colNames = names(testing)
+```
+
+Fit the model. Lets try rpart
+```{r model_fit_rpart, cache=TRUE}
+set.seed(1235)
+fitRpart <- train(classe ~ ., data = training, preProcess = c("center", "scale"), method = "rpart")
+
+predTr <- predict(fitRpart, training[,-50])
+predTe <- predict(fitRpart, testing[,-50])
+cmTr <- confusionMatrix(predTr, training$classe)
+cmTr$overall["Accuracy"]
+
+cmTe <- confusionMatrix(predTe, testing$classe)
+cmTe$overall["Accuracy"]
+```
+
+Now lets try Random Forest
+```{r Random_Forest, cache=TRUE}
+set.seed(1235)
+fitRF <- randomForest(formula = classe ~ ., data = training)
+predTr <- predict(fitRF, training[,-50])
+predTe <- predict(fitRF, testing[,-50])
+cmTr <- confusionMatrix(predTr, training$classe)
+cmTr$overall["Accuracy"]
+
+cmTe <- confusionMatrix(predTe, testing$classe)
+cmTe$overall["Accuracy"]
+```
+
+Definitely Random Forest is much better, hence we choose it as the final model.
+
+
